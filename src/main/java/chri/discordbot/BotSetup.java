@@ -27,7 +27,7 @@ public class BotSetup {
             e.printStackTrace();
         }
 
-        List<GuildChannel> channels = jda.getGuildById("1107401790917464176").getChannels();
+        List<GuildChannel> channels = jda.getGuildById("").getChannels();
 
     }
 
