@@ -6,18 +6,22 @@ import net.dv8tion.jda.api.audit.AuditLogEntry;
 import net.dv8tion.jda.api.events.guild.GuildReadyEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.dv8tion.jda.api.interactions.commands.Command;
+import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import org.jetbrains.annotations.NotNull;
 import net.dv8tion.jda.api.EmbedBuilder;
 
 import java.awt.*;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
+import com.apicatalog.jsonld.json.*;
 public class CustomSlashCommands extends ListenerAdapter {
 
 	//Add some custom slash commands
@@ -27,16 +31,7 @@ public class CustomSlashCommands extends ListenerAdapter {
 		String cmd = event.getName();
 		System.out.println(event.getUser().getName() + " has used this command:" + event.getName());
 
-		if(cmd.equals("cmds")){
-			event.deferReply();
-			//event.reply("You have asked for help? " + event.getUser().getName()).queue();
-			String res = "";
-			List<Command> cd = event.getGuild().retrieveCommands(false).complete();
-			for(Command c: cd){
-				res.concat(c.getName() + " ");
-			}
-			event.getHook().sendMessage(res).queue();
-		}else if(cmd.equals("stats")){
+		if(cmd.equals("stats")){
 			//Only allow owner to use this command
 			if(event.getMember().hasPermission(Permission.ADMINISTRATOR)){
 
@@ -85,17 +80,51 @@ public class CustomSlashCommands extends ListenerAdapter {
 			}
 
 		}else if(cmd.equals("weather")){
-			//Gets weather for the zipcode specified
-			String weatherEndpoint = "https://api.weatherbit.io/v2.0/current?";
+			event.deferReply().queue();
 
+			String[] s = event.getCommandString().split(" ");
+			EmbedBuilder eb = new EmbedBuilder();
+			eb.addField("Weather", event.getOption("lat").getAsDouble() + ", " + event.getOption("long").getAsDouble(), false);
+			try{
+				String weatherEndpoint = "https://api.weather.gov/points/"
+						+ event.getOption("lat").getAsDouble()
+						+ "," + event.getOption("long").getAsDouble();
+
+				URL url = new URL(weatherEndpoint);
+				HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+				conn.setRequestMethod("GET");
+
+				int status = conn.getResponseCode();
+				eb.addField("Got status code for end point: " + weatherEndpoint, String.valueOf(status), true);
+				if(status == HttpURLConnection.HTTP_OK){
+					BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+					String inputLine;
+					StringBuffer res = new StringBuffer();
+
+					while((inputLine=in.readLine()) != null){
+						res.append(inputLine);
+					}
+					in.close();
+					System.out.println(res);
+
+
+
+				}
+			}catch(Exception e){
+				eb.addField("Failed to get weather", "Invalid lat/long maybe", true);
+			}
+			event.getHook().sendMessageEmbeds(eb.build()).queue();
 		}
 	}
 
 	@Override
 	public void onGuildReady(@NotNull GuildReadyEvent event){
 		List<CommandData> cd = new ArrayList();
-		cd.add(Commands.slash("cmds", "Test commands working"));
+		//cd.add(Commands.slash("cmds", "Test commands working"));
 		cd.add(Commands.slash("stats", "Gives stats of the server."));
+		cd.add(Commands.slash("weather", "Gets current weather")
+				.addOption(OptionType.NUMBER, "lat", "Latitude", true, false)
+				.addOption(OptionType.NUMBER, "long", "Longitude",true, false));
 		event.getGuild().updateCommands().addCommands(cd).queue();
 	}
 
