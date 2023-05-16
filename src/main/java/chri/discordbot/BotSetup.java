@@ -2,54 +2,48 @@ package chri.discordbot;
 
 import java.io.File;
 
-import java.util.List;
 import java.util.Scanner;
 
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.OnlineStatus;
-import net.dv8tion.jda.api.entities.channel.middleman.GuildChannel;
-import net.dv8tion.jda.api.requests.GatewayIntent;
+import net.dv8tion.jda.api.entities.Activity;
 
 
-public class BotSetup {
+public class BotSetup{
     protected JDA jda;
+    private String DISC_TOKEN;
+    private String SERVERID;
 
+    public String WEATHER_KEY;
     public BotSetup(){
-        String tok = getToken();
-        this.jda = JDABuilder.createDefault(tok)
+        load_keys();
+        this.jda = JDABuilder.createDefault(DISC_TOKEN)
                 .setStatus(OnlineStatus.ONLINE)
-                //.enableIntents(GatewayIntent.GUILD_MEMBERS)
+                .setActivity(Activity.watching("The way you're on Discord"))
+                .addEventListeners(new CustomSlashCommands())
                 .build();
-        try {
-            jda.awaitReady();
-        }catch(Exception e){
-            e.printStackTrace();
-        }
-
-        List<GuildChannel> channels = jda.getGuildById("").getChannels();
 
     }
 
     public JDA getBuilder() {
         return this.jda;
     }
-    private String getToken(){
+    private void load_keys(){
         try{
-            File f = new File("src/main/resources/disc_token.txt");
+            File f = new File("src/main/resources/keys.txt");
             Scanner s = new Scanner(f);
-            String tok = s.nextLine().strip();
+            DISC_TOKEN = s.nextLine().strip();
+            SERVERID = s.nextLine().strip();
+            WEATHER_KEY = s.nextLine().strip();
             s.close();
-            return tok.strip();
         }catch(Exception e) {
             e.printStackTrace();
         }
-        return "";
     }
 
-    public void addEvent(Object o){
-        jda.addEventListener(o);
-    }
+
+
 
 
 }
