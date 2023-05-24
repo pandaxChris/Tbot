@@ -3,6 +3,12 @@ package chri.discordbot;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.audit.ActionType;
 import net.dv8tion.jda.api.audit.AuditLogEntry;
+import net.dv8tion.jda.api.entities.Guild;
+import net.dv8tion.jda.api.entities.Invite;
+import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.MessageHistory;
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
+import net.dv8tion.jda.api.entities.channel.middleman.GuildChannel;
 import net.dv8tion.jda.api.events.guild.GuildReadyEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
@@ -19,22 +25,26 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import com.apicatalog.jsonld.json.*;
-public class CustomSlashCommands extends ListenerAdapter {
+public final class CustomSlashCommands extends ListenerAdapter {
 
 	//Add some custom slash commands
 	@Override
 	public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event){
 		super.onSlashCommandInteraction(event);
 		String cmd = event.getName();
-		System.out.println(event.getUser().getName() + " has used this command:" + event.getName());
+		//AUdit/log channel
+		if(!event.getUser().isBot()){
+			TextChannel t = Objects.requireNonNull(event.getGuild()).getTextChannelsByName("auditChannel", true).get(0);
+			t.sendMessage(event.getUser().getName() + " used the command: " + event.getName() + event.getOptions()).queue();
+		}
 
+		//Handle the actual command
 		if(cmd.equals("stats")){
 			//Only allow owner to use this command
-			if(event.getMember().hasPermission(Permission.ADMINISTRATOR)){
-
+			if(Objects.requireNonNull(event.getMember()).hasPermission(Permission.ADMINISTRATOR)){
 				event.deferReply().queue();
 				String owner = event.getUser().getName();
 				int numRoles = event.getGuild().getRoles().size();
@@ -81,8 +91,6 @@ public class CustomSlashCommands extends ListenerAdapter {
 
 		}else if(cmd.equals("weather")){
 			event.deferReply().queue();
-
-			String[] s = event.getCommandString().split(" ");
 			EmbedBuilder eb = new EmbedBuilder();
 			eb.addField("Weather", event.getOption("lat").getAsDouble() + ", " + event.getOption("long").getAsDouble(), false);
 			try{
@@ -114,18 +122,81 @@ public class CustomSlashCommands extends ListenerAdapter {
 				eb.addField("Failed to get weather", "Invalid lat/long maybe", true);
 			}
 			event.getHook().sendMessageEmbeds(eb.build()).queue();
+		}else if(cmd.equals("/purge_invites")) {
+			event.deferReply().queue();
+			if (event.getMember().hasPermission(Permission.MANAGE_SERVER)) {
+				try {
+					//List<Invite> invites = event.getGuild().retrieveInvites().complete();
+
+					event.getGuild().retrieveInvites().queueAfter(1, TimeUnit.SECONDS, (invites) -> {
+						for (Invite i : invites) {
+							i.delete();
+						}
+						event.getHook().sendMessage("All invites have been deleted").queue();
+						event.getGuild().getTextChannelsByName("auditChannel", true)
+								.get(0)
+								.sendMessage("All invites deleted by " + event.getUser().getAsTag()).queue();
+					});
+
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		}else if(cmd.equals("purge_text")){
+			if(!event.getMember().hasPermission(Permission.MANAGE_CHANNEL)){return;}
+			event.deferReply().queue();
+			int n = 10;
+			if(event.getOption("n") != null && event.getOption("n").getAsInt() > 0){
+				n = event.getOption("n").getAsInt();
+			}
+			//MessageHistory m = event.getChannel().getHistory().retrievePast(n).complete();
+
+			event.getChannel().getHistory().retrievePast(n).queueAfter(1, TimeUnit.SECONDS,(msgs)->{
+				for(Message m: msgs){
+					event.getChannel().deleteMessageById(m.getId()).queue();
+				}
+				event.getGuild().getTextChannelsByName("auditChannel",true ).get(0)
+							.sendMessage("Removed " + String.valueOf(msgs.size()) + " messages from " + event.getChannel().getName()).queue();
+				event.getHook().sendMessage("Deleted messages successfully");
+			});
 		}
+
 	}
+
+
 
 	@Override
 	public void onGuildReady(@NotNull GuildReadyEvent event){
 		List<CommandData> cd = new ArrayList();
 		//cd.add(Commands.slash("cmds", "Test commands working"));
+
 		cd.add(Commands.slash("stats", "Gives stats of the server."));
 		cd.add(Commands.slash("weather", "Gets current weather")
 				.addOption(OptionType.NUMBER, "lat", "Latitude", true, false)
 				.addOption(OptionType.NUMBER, "long", "Longitude",true, false));
-		event.getGuild().updateCommands().addCommands(cd).queue();
-	}
+		cd.add(Commands.slash("purge_invites", "Remove all invites"));
+		cd.add(Commands.slash("purge_text", "Remove the last [n] messages in this channel. (Default n=10; max 100)")
+				.addOption(OptionType.INTEGER, "n", "number of messages", false, false));
 
+		event.getGuild().updateCommands().addCommands(cd).queue();
+
+		/*
+			Create an audit channel to help us log some stuff. -- easier than checking audit log in settings
+		 */
+		List<TextChannel> channels = event.getGuild().getTextChannels();//.getChannels();
+		//System.out.println(channels);
+		boolean found = false;
+		for(GuildChannel g: channels){
+			//System.out.println(g.getName());
+			if(g.getName().equalsIgnoreCase("auditChannel")){
+				found=true;  break;
+			}
+
+			if(!found){
+				event.getGuild().createTextChannel("auditChannel").queue();
+			}
+
+		}
+
+	}
 }
