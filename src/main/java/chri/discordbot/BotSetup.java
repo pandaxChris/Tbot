@@ -3,7 +3,6 @@ package chri.discordbot;
 import java.io.File;
 
 import java.util.Scanner;
-
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.OnlineStatus;
@@ -20,7 +19,6 @@ public class BotSetup{
                 .setActivity(Activity.watching("The way you're on Discord"))
                 .addEventListeners(new CustomSlashCommands())
                 .build();
-
     }
 
     public JDA getBuilder() {
@@ -28,7 +26,7 @@ public class BotSetup{
     }
     private void load_keys(){
         try{
-            File f = new File("src/main/resources/keys.txt");
+            File f = new File("src/main/java/chri/discordbot/data/discord_token.txt");
             Scanner s = new Scanner(f);
             DISC_TOKEN = s.nextLine().strip();
             s.close();
@@ -36,9 +34,4 @@ public class BotSetup{
             e.printStackTrace();
         }
     }
-
-
-
-
-
 }

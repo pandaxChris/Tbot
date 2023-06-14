@@ -3,10 +3,8 @@ package chri.discordbot;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.audit.ActionType;
 import net.dv8tion.jda.api.audit.AuditLogEntry;
-import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Invite;
 import net.dv8tion.jda.api.entities.Message;
-import net.dv8tion.jda.api.entities.MessageHistory;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.entities.channel.middleman.GuildChannel;
 import net.dv8tion.jda.api.events.guild.GuildReadyEvent;
@@ -17,25 +15,30 @@ import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
 import org.jetbrains.annotations.NotNull;
 import net.dv8tion.jda.api.EmbedBuilder;
+import org.json.simple.*;
+import org.json.simple.parser.JSONParser;
 
 import java.awt.*;
 import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-public final class CustomSlashCommands extends ListenerAdapter {
 
+public final class CustomSlashCommands extends ListenerAdapter {
 	//Add some custom slash commands
 	@Override
 	public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event){
 		super.onSlashCommandInteraction(event);
 		String cmd = event.getName();
-		//AUdit/log channel
+		//Audit/log channel
 		if(!event.getUser().isBot()){
 			TextChannel t = Objects.requireNonNull(event.getGuild()).getTextChannelsByName("auditChannel", true).get(0);
 			t.sendMessage(event.getUser().getName() + " used the command: " + event.getName() + event.getOptions()).queue();
@@ -93,36 +96,69 @@ public final class CustomSlashCommands extends ListenerAdapter {
 			event.deferReply().queue();
 			EmbedBuilder eb = new EmbedBuilder();
 			eb.addField("Weather", event.getOption("lat").getAsDouble() + ", " + event.getOption("long").getAsDouble(), false);
-			try{
-				String weatherEndpoint = "https://api.weather.gov/points/"
-						+ event.getOption("lat").getAsDouble()
-						+ "," + event.getOption("long").getAsDouble();
+			// try{
+			// 	String weatherEndpoint = "https://api.weather.gov/points/"
+			// 			+ event.getOption("lat").getAsDouble()
+			// 			+ "," + event.getOption("long").getAsDouble();
 
-				URL url = new URL(weatherEndpoint);
+			// 	URL url = new URL(weatherEndpoint);
+			// 	HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+			// 	conn.setRequestMethod("GET");
+
+			// 	int status = conn.getResponseCode();
+			// 	eb.addField("Got status code for end point: " + weatherEndpoint, String.valueOf(status), true);
+			// 	if(status == HttpURLConnection.HTTP_OK){
+			// 		BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+			// 		String inputLine;
+			// 		StringBuffer res = new StringBuffer();
+
+			// 		while((inputLine=in.readLine()) != null){
+			// 			res.append(inputLine);
+			// 		}
+			// 		in.close();
+			// 		System.out.println(res);
+
+
+
+			// 	}
+			// }catch(Exception e){
+			// 	eb.addField("Failed to get weather", "Invalid lat/long maybe", true);
+			// }
+
+			try{
+				WeatherEndpoint we = new WeatherEndpoint();
+				String ep = we.getEndpoint("data");
+				ep += "?lat=" + event.getOption("lat").getAsDouble()
+						+ "&lon="+event.getOption("lon").getAsDouble()
+						+ "&appid=" + we.key;
+				URL url = new URL(ep);
 				HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 				conn.setRequestMethod("GET");
 
 				int status = conn.getResponseCode();
-				eb.addField("Got status code for end point: " + weatherEndpoint, String.valueOf(status), true);
-				if(status == HttpURLConnection.HTTP_OK){
+				if(status == HttpURLConnection.HTTP_OK || status == HttpURLConnection.HTTP_ACCEPTED){
 					BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
 					String inputLine;
 					StringBuffer res = new StringBuffer();
 
 					while((inputLine=in.readLine()) != null){
-						res.append(inputLine);
+					 	res.append(inputLine);
 					}
 					in.close();
 					System.out.println(res);
 
 
+				}else{
 
 				}
 			}catch(Exception e){
-				eb.addField("Failed to get weather", "Invalid lat/long maybe", true);
+				e.printStackTrace();
 			}
+			
 			event.getHook().sendMessageEmbeds(eb.build()).queue();
-		}else if(cmd.equals("/purge_invites")) {
+		}else if(cmd.equals("/geolocation")){				//Find location based on city,state,country
+
+		} else if(cmd.equals("/purge_invites")) {			//Purges all invites on server
 			event.deferReply().queue();
 			if (event.getMember().hasPermission(Permission.MANAGE_SERVER)) {
 				try {
@@ -199,4 +235,39 @@ public final class CustomSlashCommands extends ListenerAdapter {
 		}
 
 	}
+
+	private class WeatherEndpoint{
+		private String key;
+		private HashMap<String,String> links;
+		public WeatherEndpoint(){
+			JSONParser jp = new JSONParser();
+			JSONObject obj;
+			try{
+				FileReader f = new FileReader("src/main/java/chri/discordbot/data/weather_endpoint.json");
+				Object o = jp.parse(f);
+				obj = (JSONObject) o;
+				Object ep = obj.get("links");
+				JSONArray ja = (JSONArray) ep;
+
+				ja.forEach(e -> parseEPObject((JSONObject) e));
+				f.close();
+			}catch(Exception e){
+				e.printStackTrace();
+			}
+
+		}
+
+		private void parseEPObject(JSONObject e){
+			String name = (String) e.get("name");
+			String ep = (String) e.get("endpoint");
+			links.put(name,ep);
+		}
+
+		public String getEndpoint(String k){
+			return links.containsKey(k) ? links.get(k) : null;
+		}
+
+	}
 }
+
+
